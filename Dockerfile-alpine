@@ -1,0 +1,13 @@
+FROM node:lts-alpine
+
+RUN apk add --no-cache \
+        gifsicle \
+        ffmpeg \
+        imagemagick
+
+# install gifify
+RUN npm i -g gifify
+
+# run gifify in /data (requires user to mount their source folder in /data)
+WORKDIR /data
+ENTRYPOINT ["gifify"]
