@@ -1,0 +1,116 @@
+name: Docker build and publish
+run-name: Run for ${{ github.ref_name }} (${{github.ref_type}}, triggered by ${{ github.event_name }})
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      # Run on every branch
+      - '**'
+      # Except branches beginning with:
+      - '!fail/**'
+      - '!dead-end/**'
+      - '!trash/**'
+      - '!dependabot/**'  # avoid running Workflow twice, because Dependabot creates a branch ("push" event) and a pull request)
+    tags:
+      - '**'
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+env:
+  TARGET_IMAGE: dersimn/gifify
+
+jobs:
+  build:
+    name: Build ${{ matrix.flavor }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          # - flavor: alpine  # Name e.g. some different base-image
+          #   # The flavor with "default-flavor: true" additionally gets the suffix-less Docker tag, e.g. "mybranch-myflavor" and additionally only "mybranch" while all other flavors only have their usual "mybranch-myotherflavor".
+          #   default-flavor: false
+          #   dockerfile: ./Dockerfile-alpine  # Dockerfile to use with this flavor
+          #   build-platforms: linux/386,linux/amd64,linux/arm/v6,linux/arm/v7,linux/arm64/v8,linux/ppc64le,linux/s390x
+          - flavor: alpine
+            default-flavor: true
+            dockerfile: ./Dockerfile-alpine
+            build-platforms: linux/amd64,linux/arm64/v8
+          - flavor: debian
+            dockerfile: ./Dockerfile-debian
+            build-platforms: linux/amd64,linux/arm64/v8
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v4
+        with:
+          images: ${{ env.TARGET_IMAGE }}
+          flavor: |
+            latest=false
+          tags: |
+            # Latest tag only for default flavor & default branch
+            type=raw,value=latest,enable=${{ format('refs/heads/{0}', github.event.repository.default_branch) == github.ref && matrix.default-flavor || 'false' }}
+            # plain flavor string on default branch
+            type=raw,value=${{ matrix.flavor }},enable={{is_default_branch}}
+            # Branch name WITHOUT suffix for default flavor
+            #type=ref,event=branch,enable=${{ matrix.default-flavor || 'false' }}
+            # Branch name WITH suffix for every branch & flavor
+            type=ref,event=branch,suffix=-${{ matrix.flavor }}
+            # Git Tag WITHOUT suffix for default flavor
+            #type=ref,event=tag,enable=${{ matrix.default-flavor || 'false' }}
+            # Git Tag WITH suffix for every tag & flavor
+            type=ref,event=tag,suffix=-${{ matrix.flavor }}
+            # Commit short SHA WITHOUT suffix for default flavor
+            #type=sha,enable=${{ matrix.default-flavor || 'false' }}
+            # Commit short SHA WITH suffix every flavor: sha-ad132f5-myflavor
+            #type=sha,suffix=-${{ matrix.flavor }}
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v2
+        if: github.event_name != 'pull_request'
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME || github.repository_owner }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v4
+        with:
+          push: ${{ github.event_name != 'pull_request' }}
+          context: .
+          file: ${{ matrix.dockerfile }}
+          platforms: ${{ matrix.build-platforms }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+      - name: Summary
+        run: |
+          echo "Pushed Docker Tags:" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo '${{ steps.meta.outputs.tags }}' >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+  dependabot-auto-merge:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.actor == 'dependabot[bot]'
+    permissions:
+      pull-requests: write
+      contents: write
+    steps:
+      - name: Enable auto-merge for Dependabot PRs
+        run: gh pr merge --auto --merge "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+          # Using GITHUB_TOKEN __won't__ trigger following Workflows
+          # see: https://github.com/orgs/community/discussions/55906
+          #GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

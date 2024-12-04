@@ -45,7 +45,6 @@ Fit video in a 350x350 rectangle and don't scale up if it's smaller:
     docker buildx build \
         -f Dockerfile-debian \
         --platform linux/amd64,linux/arm64/v8 \
-        -t dersimn/gifify \
         -t dersimn/gifify:debian \
         --push \
         .
@@ -53,6 +52,14 @@ Fit video in a 350x350 rectangle and don't scale up if it's smaller:
     docker buildx build \
         -f Dockerfile-alpine \
         --platform linux/amd64,linux/arm64/v8 \
+        -t dersimn/gifify \
         -t dersimn/gifify:alpine \
         --push \
         .
+
+## GitHub Actions
+
+Provide secrets:
+
+    gh secret set PERSONAL_ACCESS_TOKEN --body '<TOKEN>' --app dependabot
+    gh secret set DOCKERHUB_TOKEN --body '<TOKEN>'
