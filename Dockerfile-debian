@@ -1,4 +1,4 @@
-FROM node:24.2.0-bookworm-slim@sha256:13cbbcb2a775f34795abb30786cc97d0ddaabf6d6d42badd88e8216b136bf262
+FROM node:24.2.0-bookworm-slim@sha256:066785e9a3436701657822276ffeb904c75c675d396c5e26798b291a1fa099be
 
 RUN apt-get update && \
     apt-get install -y \
